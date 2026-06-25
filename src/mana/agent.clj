@@ -86,9 +86,9 @@ Guidelines:
     (do (println "Token spend - in:" input-tokens "out:" output-tokens)
         (let [data (with-retry 3 #(inference/inference cfg history))
               response (:text data)
-              _ (println (str "Agent response:" response))
-              tool-call-result (handle-tool-call tools response)
-              _ (println (str "Tool call result:" tool-call-result))]
+              ;_ (println (str "Agent response:" response))
+              tool-call-result (handle-tool-call tools response)]
+              ;_ (println (str "Tool call result:" tool-call-result))]
           (recur (conj history
                        (inference/assistant-message response)
                        (inference/tool-message (json/generate-string tool-call-result)))

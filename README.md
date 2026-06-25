@@ -10,7 +10,7 @@ The whole point of this project is to learn and have fun trying things. Not a si
 
 ## Capabilities
 
-Right now, mana can only read files and ask questions.  It supports a basic loop that wants the model to produce JSON describing tool calls on every iteration, which the harness then calls before invoking the model again with the result.
+mana can read whole files, ask you questions and search the web.  It supports a basic loop that wants the model to produce JSON describing tool calls on every iteration, which the harness then calls before invoking the model again with the result.
 
 ## How to Run mana
 

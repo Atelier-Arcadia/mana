@@ -28,11 +28,12 @@ Only the first argument in the array will be read. It must be a path to a direct
   (str/join "\n" (seq (.list (io/file (first args))))))
 
 (def request-input-description
-  "Request input from the user when you're done working and need instructions for how to proceed or have a question.")
-(defn request-input [_args]
-  (print "prompt>")
+  "Request input from the user when you're done working and need instructions for how to proceed or have a question.
+The first argument will be displayed to the user in an interactive input field. It must be no more than one short sentence.")
+(defn request-input [args]
+  (print (str (first args) "> "))
   (flush)
-  (str "The user prompted: " (read-line)))
+  (str "The user wrote: " (read-line)))
 
 (def ollama-web-search-url "https://ollama.com/api/web_search")
 (def web-search-description
