@@ -3,6 +3,8 @@
   (:require [mana.tools :as tools]
             [mana.agent :as agent]))
 
+(def ollama-api-key (System/getenv "OLLAMA_API_KEY"))
+
 (def local-config
   {:url "http://localhost:3000/v1/chat/completions"
    :key ""
@@ -14,5 +16,12 @@
    {:name "read"    :description tools/read-file-description     :implementation tools/read-file}
    {:name "list"    :description tools/list-files-description    :implementation tools/list-files}])
 
+(def ollama-web-tools
+  (if ollama-api-key
+    [{:name "search" :description tools/web-search-description :implementation (tools/create-web-search ollama-api-key)}
+     {:name "fetch"  :description tools/web-fetch-description  :implementation (tools/create-web-fetch ollama-api-key)}]
+    []))
+
 (defn -main [& args]
-  (agent/agent-loop local-config tool-registry (first args)))
+  (let [all-tools (into tool-registry ollama-web-tools)]
+    (agent/agent-loop local-config all-tools (first args))))

@@ -1,5 +1,7 @@
 (ns mana.tools
-  (:require [clojure.java.io :as io]))
+  (:require [clojure.java.io :as io]
+            [cheshire.core :as json]
+            [clj-http.client :as http]))
 
 (alias 'str 'clojure.string)
 
@@ -31,3 +33,46 @@ Only the first argument in the array will be read. It must be a path to a direct
   (print "prompt>")
   (flush)
   (str "The user prompted: " (read-line)))
+
+(def ollama-web-search-url "https://ollama.com/api/web_search")
+(def web-search-description
+  "Performs a web search for a single query and returns relevant results. Returns a data structure containing:
+The first argument is the term to search for.
+results (array): array of search result objects, each containing:
+    title (string): the title of the web page
+    url (string): the URL of the web page
+    content (string): relevant content snippet from the web page")
+(defn create-web-search [api-key]
+  "Creates a function for the model to call that closes over an Ollama API key."
+  (fn [args]
+    (let [body (json/generate-string {:query (first args) :max_results 50}) ; TODO - Revisit the limit
+          req {:accept :json
+               :content-type :json
+               :socket-timeout 60000
+               :connection-timeout 60000
+               :headers {"Authorization" (str "Bearer " api-key)}
+               :body body}
+          res (http/post ollama-web-search-url req)]
+      (:body res))))
+
+(def ollama-web-fetch-url "https://ollama.com/api/web_fetch")
+(def web-fetch-description
+  "Fetches a single web page by URL and returns its content.
+The first argument is the URL of the site to fetch.
+Returns a data structure containing:
+title (string): the title of the web page
+content (string): the main content of the web page
+links (array): array of links found on the page
+")
+(defn create-web-fetch [api-key]
+  "Creates a function for the model to call that closes over an Ollama API Key."
+  (fn [args]
+    (let [body (json/generate-string {:url (first args)})
+          req {:accept :json
+               :content-type :json
+               :socket-timeout 60000
+               :connection-timeout 60000
+               :headers {"Authorization" (str "Bearer " api-key)}
+               :body body}
+          res (http/post ollama-web-fetch-url req)]
+      (:body res))))
