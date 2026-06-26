@@ -20,7 +20,7 @@
 (defn- extract-single-tool-call [tool-call-json]
   (let [name (get-in tool-call-json ["function" "name"])
         args-json (get-in tool-call-json ["function" "arguments"])
-        arguments (get (json/parse-string args-json) "arguments")]
+        arguments (json/parse-string args-json)]
     {:name name
      :arguments arguments}))
 
@@ -40,32 +40,23 @@
 (def tool-result-message #(message "tool" %))
 
 ; TODO - Refactor code so we pass messages around rather than JSON data we have to parse through.
-(defn tool-call-message [tool-call]
+(defn tool-call-message [{name :name schema :schema}]
   {:role "assistant"
-   :function_call {:name (:name tool-call)
-                   :arguments {:arguments (:arguments tool-call)}}}) ; TODO - schemas :3
+   :function_call {:name name :arguments schema}})
 
-; TODO - Provide real schemas for tools.
-(defn- tool-schemas [tools]
-  (map (fn [tool]
-         {:type "function"
-          :function {:name (:name tool)
-                     :description (:description tool)
-                     :parameters {:type "object"
-                                  :description "generic arguments interpreted by the tool"
-                                  :properties {"arguments" {:type "array" :items "string"}}}}})
-       tools))
+(defn- schema [{name :name desc :description schema :schema}]
+  {:type "function"
+   :function {:name name
+              :description desc
+              :parameters schema}})
 
 (defn inference
   [{url :url model :model} tools messages]
-  "Perform inference/completion with MiniMax-M3. Creates a hash with
-* :text
-* :input-tokens
-* :output-tokens"
+  "Perform inference/completion with the configured model via a server hosting said model."
   (let [body (json/generate-string
               {:model model
                :messages messages
-               :tools (tool-schemas tools)}
+               :tools (map schema tools)}
               {:pretty true})
         req {:accept :json
              :content-type :json
@@ -73,6 +64,6 @@
              :connection-timeout 300000
              :body body}
         res (http/post url req)
-        data (json/parse-string (get res :body))]
+        data (json/parse-string (:body res))]
     (assoc (extract-usage-data data)
            :tool-calls (extract-tool-calls data))))
