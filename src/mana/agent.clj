@@ -50,18 +50,22 @@ When your task is complete, call the 'request-input' tool to return control to t
       (catch java.net.SocketTimeoutException e
         (with-retry (dec max-attempts) f)))))
 
+(defn- handle-response [tools response-data]
+  (let [tool-calls (:tool-calls response-data)
+        results (map (partial handle-tool-call tools) tool-calls)]
+    (if (empty? tool-calls)
+        (inference/user-message reminder)
+        (interleave (map inference/tool-call-message tool-calls)
+                    (map inference/tool-result-message results)))))
+
 (defn agent-loop [cfg tools initial-prompt]
   (loop [history [(inference/system-message system-prompt)
                   (inference/user-message initial-prompt)]
          input-tokens 0
          output-tokens 0]
     (do (println "Token spend - in:" input-tokens "out:" output-tokens)
-        ; TODO - Handle case where we get text content because lms server couldn't parse a valid tool call.
         (let [data (with-retry 3 #(inference/inference cfg tools history))
-              tool-calls (:tool-calls data)
-              tool-call-results (map (partial handle-tool-call tools) tool-calls)
-              new-messages (interleave (map inference/tool-call-message tool-calls)
-                                       (map inference/tool-result-message tool-call-results))]
+              new-messages (handle-response tools data)]
           (recur (into history new-messages)
                  (+ input-tokens (get data :input-tokens))
                  (+ output-tokens (get data :output-tokens)))))))
