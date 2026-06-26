@@ -7,16 +7,6 @@
 (defn- message [role msgs]
   { :role role :content msgs })
 
-(defn- text-content [text]
-  { :type "text" :text text })
-
-; TODO - Not using anymore; dead code?
-(defn- extract-text-response [json-data]
-  (str/join
-   ""
-   (map (fn [choice] (get-in choice ["message" "content"]))
-        (get-in json-data ["choices"]))))
-
 (defn- extract-single-tool-call [tool-call-json]
   (let [name (get-in tool-call-json ["function" "name"])
         args-json (get-in tool-call-json ["function" "arguments"])
@@ -39,7 +29,6 @@
 (def system-message #(message "system" %))
 (def tool-result-message #(message "tool" %))
 
-; TODO - Refactor code so we pass messages around rather than JSON data we have to parse through.
 (defn tool-call-message [{name :name schema :schema}]
   {:role "assistant"
    :function_call {:name name :arguments schema}})

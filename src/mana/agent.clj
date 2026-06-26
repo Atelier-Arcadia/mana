@@ -20,7 +20,6 @@
     (str/join " " ["[Tool call]" fmt-name first-50])))
 
 (defn- handle-tool-call
-  ; TODO - Update when we get schemas?
   [tool-registry {tool-name :name tool-args :arguments}]
   "Invoke a tool as specified in a JSON-encoded tool call from the agent."
   (try
