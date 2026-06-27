@@ -61,7 +61,7 @@ The first argument will be displayed to the user in an interactive input field. 
 (def ollama-web-search-url "https://ollama.com/api/web_search")
 (defn- do-ollama-web-search
   [api-key {query "query"}]
-  (let [body (json/generate-string {:query query :max_results 50}) ; TODO - Revisit the limit
+  (let [body (json/generate-string {:query query :max_results 10}) ; TODO - Revisit the limit
         req {:accept :json
              :content-type :json
              :socket-timeout 60000

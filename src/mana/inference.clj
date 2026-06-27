@@ -33,9 +33,9 @@
 (def system-message #(message "system" %))
 (def tool-result-message #(message "tool" %))
 
-(defn tool-call-message [{name :name schema :schema}]
+(defn tool-call-message [{name :name args :arguments}]
   {:role "assistant"
-   :function_call {:name name :arguments schema}})
+   :function_call {:name name :arguments args}})
 
 (defn- schema [{name :name desc :description schema :schema}]
   {:type "function"
