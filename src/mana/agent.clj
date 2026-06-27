@@ -25,7 +25,8 @@
   (try
     (let [tool (find-tool tool-registry tool-name)]
       (if tool
-        ((:implementation tool) tool-args)
+        (do (println "[Tool call] (" tool-name ")")
+            ((:implementation tool) tool-args))
         (str "Not a valid tool call: `" tool-name "`")))
     (catch JsonParseException e
       (str "Your response was not valid JSON\n. Error: " (.getMessage e) "\n\n" reminder))
@@ -53,7 +54,7 @@ When your task is complete, call the 'request-input' tool to return control to t
   (let [tool-calls (:tool-calls response-data)
         results (map (partial handle-tool-call tools) tool-calls)]
     (if (empty? tool-calls)
-        (inference/user-message reminder)
+        [(inference/user-message reminder)]
         (interleave (map inference/tool-call-message tool-calls)
                     (map inference/tool-result-message results)))))
 
@@ -64,7 +65,8 @@ When your task is complete, call the 'request-input' tool to return control to t
          output-tokens 0]
     (do (println "Token spend - in:" input-tokens "out:" output-tokens)
         (let [data (with-retry 3 #(inference/inference cfg tools history))
+              _ (println "Reasoning\n> " (:thoughts data) "\n")
               new-messages (handle-response tools data)]
           (recur (into history new-messages)
-                 (+ input-tokens (get data :input-tokens))
-                 (+ output-tokens (get data :output-tokens)))))))
+                 (+ input-tokens (:input-tokens data))
+                 (+ output-tokens (:output-tokens data)))))))

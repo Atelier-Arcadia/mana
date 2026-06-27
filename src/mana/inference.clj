@@ -24,6 +24,10 @@
     {:input-tokens (get usage "prompt_tokens")
      :output-tokens (get usage "completion_tokens")}))
 
+(defn- extract-reasoning-content [json-data]
+  (let [choices (get json-data "choices")]
+    (str/join "\n" (map #(get-in % ["message" "reasoning_content"]) choices))))
+
 (def user-message #(message "user" %))
 (def assistant-message #(message "assistant" %))
 (def system-message #(message "system" %))
@@ -54,5 +58,6 @@
              :body body}
         res (http/post url req)
         data (json/parse-string (:body res))]
-    (assoc (extract-usage-data data)
-           :tool-calls (extract-tool-calls data))))
+    (into (extract-usage-data data)
+          {:tool-calls (extract-tool-calls data)
+           :thoughts (extract-reasoning-content data)})))

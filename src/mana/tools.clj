@@ -19,7 +19,7 @@
 
 (defn- do-display
   [{message "message"}]
-  (println message)
+  (println "\n--- AGENT MESSAGE ----------\n" message "\n----------------------------\n")
   "Your message was successfully displayed to the user.")
 
 (def display
