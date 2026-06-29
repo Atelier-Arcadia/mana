@@ -11,11 +11,25 @@
   {prop-name {:type type
               :description description}})
 
-(defn simple-object-schema [& properties]
+(defn- simple-object-schema [required & properties]
   (let [structured-props (map simple-property properties)
         props (reduce into {} structured-props)]
-    {:type "object" :properties props}))
+    {:type "object" :properties props, :required required}))
 
+(defn- merge-schemas [s1 s2]
+  {:type "object"
+   :properties (apply merge (map :properties [s1 s2]))
+   :required (apply into (map :required [s1 s2]))})
+
+(defn- spec->call [spec]
+  (if (= :optional (first spec))
+    (let [[_ param ts desc] spec]
+      (simple-object-schema [] [param ts desc]))
+    (let [[param ts desc] spec]
+      (simple-object-schema [param] [param ts desc]))))
+
+(defn schema [& specs]
+  (reduce merge-schemas (map spec->call specs)))
 
 (defn- do-display
   [{message "message"}]
@@ -26,7 +40,7 @@
   {:name "display"
    :description "Print a message for the user to see. This is the only way to convey a response to the user.
 The array of arguments will be merged into a single string to display to the user."
-   :schema (simple-object-schema [:message "string" "The message to display"])
+   :schema (schema [:message "string" "The message to display"])
    :implementation do-display})
 
 ; TODO - Need to be able to read and write at offsets.
@@ -34,14 +48,16 @@ The array of arguments will be merged into a single string to display to the use
   {:name "read-file"
    :description "Read an entire file from a specified path.
 Only the first argument in the array will be read. It must be a path to a file relative to the working directory."
-   :schema (simple-object-schema [:file_path "string" "The path of the file to read"])
+   :schema (schema [:file_path "string" "The path to the file to read."]
+                   [:optional :offset "number" "Start reading after skipping 'offset' lines."]
+                   [:optional :limit "number" "Stop reading after 'limit' lines."])
    :implementation (fn [{file-path "file_path"}] (slurp file-path))})
 
 (def list-files
   {:name "list-files"
    :description "List the files and directories in a directory.
 Only the first argument in the array will be read. It must be a path to a directory relative to the working directory."
-   :schema (simple-object-schema [:path "string" "The path to the directory to list from."])
+   :schema (schema [:path "string" "The path to the directory to list from."])
    :implementation (fn [{path "path"}] (str/join ", " (seq (.list (io/file path)))))})
 
 (defn- do-request-input
@@ -54,7 +70,7 @@ Only the first argument in the array will be read. It must be a path to a direct
   {:name "request-input"
    :description "Request input from the user when you're done working and need instructions for how to proceed or have a question.
 The first argument will be displayed to the user in an interactive input field. It must be no more than one short sentence."
-   :schema (simple-object-schema [:prompt "string" "A prompt to display to the user for them to respond to."])
+   :schema (schema [:prompt "string" "A prompt to display to the user for them to respond to."])
    :implementation do-request-input})
 
 
@@ -79,7 +95,7 @@ results (array): array of search result objects, each containing:
     title (string): the title of the web page
     url (string): the URL of the web page
     content (string): relevant content snippet from the web page"
-   :schema (simple-object-schema [:query "string" "A query to search the web for."])
+   :schema (schema [:query "string" "A query to search the web for."])
    :implementation (partial do-ollama-web-search api-key)})
 
 (def ollama-web-fetch-url "https://ollama.com/api/web_fetch")
@@ -103,5 +119,5 @@ Returns a data structure containing:
 title (string): the title of the web page
 content (string): the main content of the web page
 links (array): array of links found on the page"
-   :schema (simple-object-schema [:url "string" "A URL to fetch from the web."])
+   :schema (schema [:url "string" "A URL to fetch from the web."])
    :implementation (partial do-ollama-web-fetch api-key)})
