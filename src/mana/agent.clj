@@ -33,20 +33,6 @@
     (catch Exception e
       (str "Tool call failed with error: " (.getMessage e)))))
 
-(def system-prompt
-  "You are an orchestrator of tool calls that utilizes the tools available to you to solve the tasks the user assigns you.
-You run within an agent harness that will respond back to you with tool call results automatically.
-
-Workflow:
-1. Understand the messages presented to you
-  * 'assistant' messages describe the tool calls you requested previously.
-  * 'tool' messages immediately following an 'assistant' message contain the results of running that tool.
-2. Determine if the task is complete.
-  * If the task is complete, request two tool calls: (1) to display the results to the user and (2) to request more input.
-  * If the task is not complete, request additional tool calls to help you complete the task.
-
-When your task is complete, call the 'request-input' tool to return control to the user to provide additional instructions.")
-
 (defn- with-retry [max-attempts f]
   (when (not (zero? max-attempts))
     (try
@@ -64,15 +50,66 @@ When your task is complete, call the 'request-input' tool to return control to t
         (interleave (map inference/tool-call-message tool-calls)
                     (map inference/tool-result-message results)))))
 
-(defn agent-loop [cfg tools initial-prompt]
+(def system-prompt
+  "You are an orchestrator of tool calls that utilizes the tools available to you to solve the tasks the user assigns you.
+You run within an agent harness that will respond back to you with tool call results automatically.
+
+Workflow:
+1. Understand the messages presented to you.
+  * 'assistant' messages describe the tool calls you requested previously.
+  * 'tool' messages immediately following an 'assistant' message contain the results of running that tool.
+2. Determine if the task is complete.
+  * Compare the results of the existing tool calls against the goal you are attempting to accomplish.
+  * Determine if there are any gaps that still need to be explored.
+3. Decide how to respond
+  * If the task is complete, request two tool calls: (1) to display the results to the user and (2) to request more input.
+  * If the task is not complete, request additional tool calls to help you complete the task.
+
+Guidelines:
+- Do your best to fulfil the user's request with the information you're provided.
+- Call tools only when there are unambiguous gaps in the information you need to fulfil the task.
+- Disregard minor errors such as mis-spellings or slight differences in wording.
+- Avoid calling tools again if the information you need is already present.
+- Treat the most recent user message as the task that you must fulfil.
+")
+
+(def summarization-prompt
+  "Summarize the discussion so far into a concise message expressiong:
+1. Your interpretation of the user's original request.
+2. Your plan to fulfil the remaining steps.
+3. The information that you need to complete the task.
+4. A condensed report of what you've accomplished so far.
+
+You do not need to call a tool to fulfil this request. Simply respond with your summary.")
+(defn- summarize-context [cfg message-history]
+  (let [data (with-retry 3 #(inference/inference cfg [] message-history))]
+    (inference/assistant-message (:text data))))
+
+(defn- manage-context
+  [{window :window, :as cfg} total-tkn-spend history new-msgs]
+  (let [new-history (when (> (rem total-tkn-spend window) (* 0.8 window))
+                      [(inference/system-message system-prompt)
+                       (summarize-context cfg history)])]
+    (into (or new-history history)
+          new-msgs)))
+
+(defn agent-loop [cfg task]
   (loop [history [(inference/system-message system-prompt)
-                  (inference/user-message initial-prompt)]
+                  (inference/user-message (:initial-prompt task))]
          input-tokens 0
          output-tokens 0]
     (do (println "Token spend - in:" input-tokens "out:" output-tokens)
-        (let [data (with-retry 3 #(inference/inference cfg tools history))
+        (let [data (with-retry 3 #(inference/inference cfg (:tools task) history))
               _ (println "Reasoning\n> " (:thoughts data) "\n")
-              new-messages (handle-response tools data)]
-          (recur (into history new-messages)
-                 (+ input-tokens (:input-tokens data))
-                 (+ output-tokens (:output-tokens data)))))))
+              new-messages (handle-response (:tools task) data)
+              ;_ (println new-messages)
+              total-spend (+ input-tokens
+                             output-tokens
+                             (:input-tokens data)
+                             (:output-tokens data))
+              finished ((:done? task) (into history new-messages))]
+          (if (not finished)
+            (recur (manage-context cfg total-spend history new-messages)
+                   (+ input-tokens (:input-tokens data))
+                   (+ output-tokens (:output-tokens data)))
+            (println "Finished!\nReason:" finished))))))

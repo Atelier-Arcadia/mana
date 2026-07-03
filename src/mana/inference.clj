@@ -7,6 +7,11 @@
 (defn- message [role msgs]
   { :role role :content msgs })
 
+(defn- extract-text-response [json-data]
+  (let [choices (get json-data "choices")
+        content (map #(get-in % ["message" "content"]) choices)]
+    (str/join "" content)))
+
 (defn- extract-single-tool-call [tool-call-json]
   (let [name (get-in tool-call-json ["function" "name"])
         args-json (get-in tool-call-json ["function" "arguments"])
@@ -19,6 +24,7 @@
         tool-call-data (flatten (map #(get-in % ["message" "tool_calls"]) choices))]
     (map extract-single-tool-call tool-call-data)))
 
+; TODO - Subtract usage::completion_tokens_details::reasoning_tokens from completion_tokens since we don't reflect them back.
 (defn- extract-usage-data [json-data]
   (let [usage (get json-data "usage")]
     {:input-tokens (get usage "prompt_tokens")
@@ -60,4 +66,5 @@
         data (json/parse-string (:body res))]
     (into (extract-usage-data data)
           {:tool-calls (extract-tool-calls data)
+           :text (extract-text-response data)
            :thoughts (extract-reasoning-content data)})))
