@@ -26,7 +26,7 @@
     (let [tool (find-tool tool-registry tool-name)]
       (if tool
         (do (println (format-tool-call tool-name tool-args))
-            ((:implementation tool) tool-args))
+            (json/generate-string ((:implementation tool) tool-args)))
         (str "Not a valid tool call: `" tool-name "`")))
     (catch JsonParseException e
       (str "Your response was not valid JSON\n. Error: " (.getMessage e) "\n\n" reminder))
