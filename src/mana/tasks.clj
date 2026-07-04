@@ -16,11 +16,11 @@
 
 (defn max-turns [x]
   #(and (>= (count %) x)
-        (str "Exceeded max turns: " x)))
+        (format "Exceeded max turns: %d" x)))
 
 (defn tool-called? [tool]
   #(and (some (tool-call? tool) %)
-        (str "Called tool " (:name tool))))
+        (format "Called tool %s" (:name tool))))
 
 (defn calls-exceed? [tool limit]
   (fn [history]
@@ -28,12 +28,13 @@
               (filter (tool-call? tool))
               (count)
               (<= limit))
-         (str "Exceeded max calls to " (:name tool) ": " limit))))
+         (format "Exceeded max calls to %s: %d" (:name tool) limit))))
 
-(defn research [{key :ollama-api-key query :query limit :search-limit}]
+(defn research
+  [{key :ollama-api-key query :query turns :max-turns limit :search-limit}]
   (let [web-search (tools/create-web-search key)
         web-fetch (tools/create-web-fetch key)]
-    {:done? (stop (max-turns 15)
+    {:done? (stop (max-turns turns)
                   (tool-called? tools/display)
                   (calls-exceed? web-search limit)
                   (calls-exceed? web-fetch limit))
@@ -41,9 +42,9 @@
              tools/read-file
              web-search
              web-fetch]
-     :initial-prompt (str "Your task is to perform research to gather information to display to the user.
+     :initial-prompt (format "Your task is to perform research to gather information to display to the user.
 Your workflow:
-1. At most 5 searches.
+1. At most %d searches.
 2. Synthesize your findings.
 3. Write your response with the display tool.
 
@@ -51,4 +52,4 @@ If you encounter errors such as status code 429 or 400 responses from your searc
 
 Use the web-search tool to identify sources and then web-fetch tool to obtain detailed information.
 
-Answer the user's query:" query)}))
+Answer the user's query: %s" limit query)}))

@@ -16,4 +16,5 @@
    local-config
    (tasks/research {:query (first args)
                     :search-limit 5
+                    :max-turns 15
                     :ollama-api-key ollama-api-key})))
