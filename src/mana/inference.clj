@@ -34,6 +34,7 @@
   (let [choices (get json-data "choices")]
     (str/join "\n" (map #(get-in % ["message" "reasoning_content"]) choices))))
 
+
 (def user-message #(message "user" %))
 (def assistant-message #(message "assistant" %))
 (def system-message #(message "system" %))

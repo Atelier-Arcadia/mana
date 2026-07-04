@@ -95,7 +95,7 @@ You do not need to call a tool to fulfil this request. Simply respond with your 
 
 (defn agent-loop [cfg task]
   (loop [history [(inference/system-message system-prompt)
-                  (inference/user-message (:initial-prompt task))]
+                  (inference/user-message (:prompt task))]
          input-tokens 0
          output-tokens 0]
     (do (println "Token spend - in:" input-tokens "out:" output-tokens)

@@ -3,6 +3,10 @@
             [cheshire.core :as json]
             [clj-http.client :as http]))
 
+
+; Implementation Notes
+; Contents returned by tools must be either a string or an array of objects.
+
 (alias 'str 'clojure.string)
 
 
@@ -121,3 +125,11 @@ content (string): the main content of the web page
 links (array): array of links found on the page"
    :schema (schema [:url "string" "A URL to fetch from the web."])
    :implementation (partial do-ollama-web-fetch api-key)})
+
+(def lookup-memory
+  {:name "lookup-memory"
+   :description "Searches memory files for content related to a given tag."
+   :schema (schema [:tag "string" "One specific tag to search for."])
+   :implementation (fn [{tag :tag}] {:status "error"
+                                     :message "Not implemented."
+                                     :action-required "Display this to the user and terminate."})})
