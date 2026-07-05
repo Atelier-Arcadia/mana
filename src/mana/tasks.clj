@@ -1,18 +1,13 @@
 (ns mana.tasks
-  (:require [mana.tools :as tools]))
+  (:require [mana.tools :as tools]
+            [mana.chats :as chats]))
 
-(defn stop-when [& conditions]
-  (fn [history]
-    (reduce (fn ([a b] (or a b)))
-            (map (fn [condition] (condition history))
-                 conditions))))
+(defn- either? [a b]
+  (or a b))
 
-(defn tool-call? [tool]
-  (fn [message]
-    (and (= (:role message) "assistant")
-         (:function_call message)
-         (= (get-in message [:function_call :name])
-            (:name tool)))))
+(defn- tool-call? [tool]
+  #(and (chats/is_a? :tool-call-message %)
+        (= (chats/tool-being-called %) (:name tool))))
 
 (defn max-turns [x]
   #(and (>= (count %) x)
@@ -23,14 +18,17 @@
         (format "Called tool %s" (:name tool))))
 
 (defn calls-exceed? [tool limit]
-  (fn [history]
-    (let [times-called (count (filter (tool-call? tool) history))])
-    (and (->> history
-              (filter (tool-call? tool))
-              (count)
-              (<= limit))
-         (format "Exceeded max calls to %s: %d" (:name tool) limit))))
+  #(and (->> %
+             (filter (tool-call? tool))
+             (count)
+             (<= limit))
+        (format "Exceeded max calls to %s: %d" (:name tool) limit)))
 
+; STOP!
+(defn ! [& conditions]
+  "Check if any stop-condition has been reached, returning the alert message when one is encountered."
+  (fn [history]
+    (->> conditions (map #(% history)) (reduce either?))))
 (def research-prompt-fmt "Your task is to perform research to gather information to display to the user.
 Your workflow:
 1. At most %d searches.
@@ -51,10 +49,10 @@ Answer the user's query: %s")
      :tools [tools/display
              web-search
              web-fetch]
-     :done? (stop-when (max-turns turns)
-                       (tool-called? tools/display)
-                       (calls-exceed? web-search limit)
-                       (calls-exceed? web-fetch limit))}))
+     :done? (! (max-turns turns)
+               (tool-called? tools/display)
+               (calls-exceed? web-search limit)
+               (calls-exceed? web-fetch limit))}))
 
 (defn remember-prompt [tags]
   (format "Your task is to search through memory files to identify information about the content requested by the user.
@@ -73,8 +71,8 @@ You are given the following tags:
 
 ;; I tend to think about these things in terms of their done-conditions first.
 (defn remember [{ turns :max-turns tags :tags }]
-  {:done? (stop-when (max-turns turns)
-                     (tool-called? tools/display))
+  {:done? (! (max-turns turns)
+             (tool-called? tools/display))
    :tools [tools/lookup-memory
            tools/display]
    :prompt (remember-prompt tags)})
@@ -100,7 +98,7 @@ Contents provided by the user:
          (clojure.string/join "\n\n"))))
 
 (defn condense [{ contents :contents turns :max-turns }]
-  {:done? (stop-when (max-turns turns)
-                     (tool-called? tools/display))
+  {:done? (! (max-turns turns)
+             (tool-called? tools/display))
    :tools [tools/display]
    :prompt (condense-prompt contents)})

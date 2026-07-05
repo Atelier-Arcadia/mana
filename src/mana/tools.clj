@@ -1,39 +1,10 @@
 (ns mana.tools
   (:require [clojure.java.io :as io]
             [cheshire.core :as json]
-            [clj-http.client :as http]))
-
-
-; Implementation Notes
-; Contents returned by tools must be either a string or an array of objects.
+            [clj-http.client :as http]
+            [mana.infer :refer [schema]]))
 
 (alias 'str 'clojure.string)
-
-
-(defn- simple-property
-  [[prop-name type description]]
-  {prop-name {:type type
-              :description description}})
-
-(defn- simple-object-schema [required & properties]
-  (let [structured-props (map simple-property properties)
-        props (reduce into {} structured-props)]
-    {:type "object" :properties props, :required required}))
-
-(defn- merge-schemas [s1 s2]
-  {:type "object"
-   :properties (apply merge (map :properties [s1 s2]))
-   :required (apply into (map :required [s1 s2]))})
-
-(defn- spec->call [spec]
-  (if (= :optional (first spec))
-    (let [[_ param ts desc] spec]
-      (simple-object-schema [] [param ts desc]))
-    (let [[param ts desc] spec]
-      (simple-object-schema [param] [param ts desc]))))
-
-(defn schema [& specs]
-  (reduce merge-schemas (map spec->call specs)))
 
 (defn- do-display
   [{message "message"}]
@@ -62,7 +33,7 @@ Only the first argument in the array will be read. It must be a path to a file r
    :description "List the files and directories in a directory.
 Only the first argument in the array will be read. It must be a path to a directory relative to the working directory."
    :schema (schema [:path "string" "The path to the directory to list from."])
-   :implementation (fn [{path "path"}] (str/join ", " (seq (.list (io/file path)))))})
+   :implementation (fn [{path "path"}] (->> path (io/file) (.list) (seq) (str/join ", ")))})
 
 (defn- do-request-input
   [{prompt "prompt"}]

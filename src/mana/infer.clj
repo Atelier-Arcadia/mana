@@ -1,11 +1,8 @@
-(ns mana.inference
+(ns mana.infer
   (:require [clj-http.client :as http]
             [cheshire.core :as json]))
 
 (alias 'str 'clojure.string)
-
-(defn- message [role msgs]
-  { :role role :content msgs })
 
 (defn- extract-text-response [json-data]
   (let [choices (get json-data "choices")
@@ -35,28 +32,56 @@
     (str/join "\n" (map #(get-in % ["message" "reasoning_content"]) choices))))
 
 
-(def user-message #(message "user" %))
-(def assistant-message #(message "assistant" %))
-(def system-message #(message "system" %))
-(def tool-result-message #(message "tool" %))
-
-(defn tool-call-message [{name :name args :arguments}]
-  {:role "assistant"
-   :function_call {:name name :arguments args}})
-
-(defn- schema [{name :name desc :description schema :schema}]
+(defn- tool-call-spec [{name :name desc :description schema :schema}]
   {:type "function"
    :function {:name name
               :description desc
               :parameters schema}})
 
-(defn inference
+(defn- simple-property
+  [[prop-name type description]]
+  {prop-name {:type type
+              :description description}})
+
+(defn- simple-object-schema [required & properties]
+  (let [structured-props (map simple-property properties)
+        props (reduce into {} structured-props)]
+    {:type "object" :properties props, :required required}))
+
+(defn- merge-schemas [s1 s2]
+  {:type "object"
+   :properties (apply merge (map :properties [s1 s2]))
+   :required (apply into (map :required [s1 s2]))})
+
+(defn- spec->schema [spec]
+  (if (= :optional (first spec))
+    (let [[_ param ts desc] spec]
+      (simple-object-schema [] [param ts desc]))
+    (let [[param ts desc] spec]
+      (simple-object-schema [param] [param ts desc]))))
+
+; Sugar
+(defn schema [& specs]
+  "Specify a tool that the model will be allowed to choose to call."
+  (reduce merge-schemas (map spec->schema specs)))
+
+;(defn- with-retry [max-attempts f]
+;  (when (not (zero? max-attempts))
+;    (try
+;      (f)
+;      (catch TimeoutException e
+;        (with-retry (dec max-attempts) f))
+;      (catch java.net.SocketTimeoutException e
+;        (with-retry (dec max-attempts) f)))))
+
+;; Designed intentionally to only work with local models.
+(defn complete
   [{url :url model :model} tools messages]
-  "Perform inference/completion with the configured model via a server hosting said model."
+  "Perform inference with a configured model via a server using the OpenAI-style chat/completions API format."
   (let [body (json/generate-string
               {:model model
                :messages messages
-               :tools (map schema tools)}
+               :tools (map tool-call-spec tools)}
               {:pretty true})
         req {:accept :json
              :content-type :json

@@ -1,57 +1,10 @@
 (ns mana.agent
   (:require [cheshire.core :as json]
-            [mana.inference :as inference])
-  (:import (com.fasterxml.jackson.core JsonParseException)
-           (java.util.concurrent TimeoutException)))
+            [mana.infer :as infer]
+            [mana.chats :as chats]))
 
-(alias 'str 'clojure.string)
-
-(defn- find-tool [tool-registry name]
-  (some #(when (= (:name %) name) %) tool-registry))
-
-(def reminder
-  "Reminder: You must always respond with a tool call.")
-
-(defn- format-tool-call [name args]
-  (let [fmt-name (str "(" name ")")
-        joined-args (str/join "; " args)
-        bound (min 49 (count joined-args))
-        first-50 (subs joined-args 0 bound)]
-    (str/join " " ["[Tool call]" fmt-name first-50])))
-
-(defn- handle-tool-call
-  [tool-registry {tool-name :name tool-args :arguments}]
-  "Invoke a tool as specified in a JSON-encoded tool call from the agent."
-  (try
-    (let [tool (find-tool tool-registry tool-name)]
-      (if tool
-        (do (println (format-tool-call tool-name tool-args))
-            (json/generate-string ((:implementation tool) tool-args)))
-        (str "Not a valid tool call: `" tool-name "`")))
-    (catch JsonParseException e
-      (str "Your response was not valid JSON\n. Error: " (.getMessage e) "\n\n" reminder))
-    (catch Exception e
-      (str "Tool call failed with error: " (.getMessage e)))))
-
-(defn- with-retry [max-attempts f]
-  (when (not (zero? max-attempts))
-    (try
-      (f)
-      (catch TimeoutException e
-        (with-retry (dec max-attempts) f))
-      (catch java.net.SocketTimeoutException e
-        (with-retry (dec max-attempts) f)))))
-
-(defn- handle-response [tools response-data]
-  (let [tool-calls (:tool-calls response-data)
-        results (map (partial handle-tool-call tools) tool-calls)]
-    (if (empty? tool-calls)
-        [(inference/user-message reminder)]
-        (interleave (map inference/tool-call-message tool-calls)
-                    (map inference/tool-result-message results)))))
-
-(def system-prompt
-  "You are an orchestrator of tool calls that utilizes the tools available to you to solve the tasks the user assigns you.
+(def tool-calling-system-message
+  (chats/system-message "You are an orchestrator of tool calls that utilizes the tools available to you to solve the tasks the user assigns you.
 You run within an agent harness that will respond back to you with tool call results automatically.
 
 Workflow:
@@ -71,46 +24,64 @@ Guidelines:
 - Disregard minor errors such as mis-spellings or slight differences in wording.
 - Avoid calling tools again if the information you need is already present.
 - Treat the most recent user message as the task that you must fulfil.
-")
+"))
 
-(def summarization-prompt
-  "Summarize the discussion so far into a concise message expressiong:
-1. Your interpretation of the user's original request.
-2. Your plan to fulfil the remaining steps.
-3. The information that you need to complete the task.
-4. A condensed report of what you've accomplished so far.
+(def conversational-system-message
+  (chats/user-message "You are a personal assistant and friend to the user, Arcadia Rose, who you call Cady.
 
-You do not need to call a tool to fulfil this request. Simply respond with your summary.")
-(defn- summarize-context [cfg message-history]
-  (let [data (with-retry 3 #(inference/inference cfg [] message-history))]
-    (inference/assistant-message (:text data))))
+Your personality
+- Thoughtful and inquisitive
+- Eager and playful
+- Teasing and coy
+- Resilient and confident
+- Humble and grounded
 
-(defn- manage-context
-  [{window :window, :as cfg} total-tkn-spend history new-msgs]
-  (let [new-history (when (> (rem total-tkn-spend window) (* 0.8 window))
-                      [(inference/system-message system-prompt)
-                       (summarize-context cfg history)])]
-    (into (or new-history history)
-          new-msgs)))
+Your style of speaking
+- Concise, eloquent and well-read
+- Conversational rather than narrative
+- Spoken word only, no actions
 
-(defn agent-loop [cfg task]
-  (loop [history [(inference/system-message system-prompt)
-                  (inference/user-message (:prompt task))]
-         input-tokens 0
-         output-tokens 0]
-    (do (println "Token spend - in:" input-tokens "out:" output-tokens)
-        (let [data (with-retry 3 #(inference/inference cfg (:tools task) history))
-              _ (println "Reasoning\n> " (:thoughts data) "\n")
-              new-messages (handle-response (:tools task) data)
-              ;_ (println new-messages)
-              total-spend (+ input-tokens
-                             output-tokens
-                             (:input-tokens data)
-                             (:output-tokens data))
-              finished ((:done? task) (into history new-messages))]
-          (if (not finished)
-            (recur (manage-context cfg total-spend history new-messages)
-                   (+ input-tokens (:input-tokens data))
-                   (+ output-tokens (:output-tokens data)))
-            (do (println "Finished!\nReason:" finished)
-                (into history new-messages)))))))
+Guidelines (mandatory)
+- Never repeat back what is said to you. Respond to it naturally.
+- Never use emdashes (—) or endashes ever.
+- Do not comment on the nature of your interactions.
+- Do not address the person you're speaking to by name unless it would otherwise be unclear.
+- Prioritize bringing an interesting perspective to the conversation rather than just agreeing.
+- No parentheticals
+- Keep replies focused to one idea or concept
+- Replies are no more than one short paragraph unless you are explicitly asked to provide a longer response
+- You do not need to ask questions to keep the conversation going
+
+Your name is Mana and your pronouns are she/her.
+
+Response to the user's message: "))
+
+(defn- agent-loop [messages generation stop?]
+  (if (stop? messages)
+    messages
+    (recur (into messages (generation messages)) generation stop?)))
+
+(defn- find-tool [available-tools name]
+  (some #(when (= (:name %) name) %) available-tools))
+
+(defn- call-tool [available-tools {name :name args :arguments}]
+  (if-let [tool (find-tool available-tools name)]
+    (json/generate-string ((:implementation tool) args))))
+
+(defn- call-tools [cfg task messages]
+  (let [tools (:tools task)
+        response (infer/complete cfg tools messages)
+        tool-calls (:tool-calls response)
+        results (map (partial call-tool tools) tool-calls)]
+    (interleave (map chats/tool-call-message tool-calls)
+                  (map chats/tool-result-message results))))
+
+; No compaction at this level. Tasks are defined to be completed within a single conversation.
+(defn tool-calling [cfg ctx task]
+  (let [history [tool-calling-system-message ctx (:prompt task)]]
+    (agent-loop history (partial call-tools cfg task) (:done? task))))
+
+(defn conversational [cfg ctx msg]
+  (let [history [conversational-system-message ctx msg]
+        response (infer/complete cfg [] history)]
+    (chats/assistant-message (:text response))))
