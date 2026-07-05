@@ -112,4 +112,5 @@ You do not need to call a tool to fulfil this request. Simply respond with your 
             (recur (manage-context cfg total-spend history new-messages)
                    (+ input-tokens (:input-tokens data))
                    (+ output-tokens (:output-tokens data)))
-            (println "Finished!\nReason:" finished))))))
+            (do (println "Finished!\nReason:" finished)
+                (into history new-messages)))))))
