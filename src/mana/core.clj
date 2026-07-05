@@ -4,25 +4,25 @@
             [mana.agent :as agent]
             [mana.tasks :as tasks]))
 
-(def ollama-api-key (System/getenv "OLLAMA_API_KEY"))
+(def secrets
+  (-> "secrets.edn"
+      (slurp)
+      (clojure.edn/read-string)))
+
+(def ollama-api-key (:ollama-api-key secrets))
 
 (def qwen3-6-fast
   {:url "http://localhost:3000/v1/chat/completions"
    :model "qwen/qwen3.6-35b-a3b"
    :window 200000})
 
-; Capabilities -> Workflows
-;(defmacro capability [cfg task base-args]
-;  `(fn [args]
-;     (agent/agent-loop ~cfg (~task (merge args ~base-args)))))
-
 (defn capability [cfg task base-args]
   (fn [args]
     (agent/agent-loop cfg (task (merge args base-args)))))
 
-(def search (capability qwen3-6-fast tasks/research { :ollama-api-key ollama-api-key :search-limit 5 :max-turns 10}))
+(def search (capability qwen3-6-fast tasks/research { :ollama-api-key ollama-api-key :search-limit 5 :max-turns 20}))
 (def recall (capability qwen3-6-fast tasks/remember { :max-turns 100 }))
-(def summarize (capability qwen3-6-fast tasks/condense { :max-turns 1 }))
+(def summarize (capability qwen3-6-fast tasks/condense { :max-turns 2 }))
 
 (defn bug-hunt [bug-desc]
   (format "You are searching for a bug, i.e. an issue or error, in the code nested in the current directory.
@@ -42,4 +42,4 @@ Description of the issue:
     (summarize {:contents [online-resources project-memories]})))
 
 (defn -main [& args]
-  (println (find-bug "This is a test. Don't search for anything")))
+  (search {:query "What is causing the token cost accumulated within an agent loop to get dropped between tasks?"}))
