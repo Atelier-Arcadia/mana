@@ -30,6 +30,9 @@
   (fn [history]
     (->> conditions (map #(% history)) (reduce either?))))
 (def research-prompt-fmt "Your task is to perform research to gather information to display to the user.
+
+You must synthesize search terms to query so that you find a diverse but relevant array of results.
+
 Your workflow:
 1. At most %d searches.
 2. Synthesize your findings.
@@ -39,20 +42,19 @@ If you encounter errors such as status code 429 or 400 responses from your searc
 
 Use the web-search tool to identify sources and then web-fetch tool to obtain detailed information.
 
+Only call the display tool once with the final report to display to the user and not for any other reason.
+
 Answer the user's query: %s")
 
-(defn research
-  [{key :ollama-api-key query :query turns :max-turns limit :search-limit}]
-  (let [web-search (tools/create-web-search key)
-        web-fetch (tools/create-web-fetch key)]
-    {:prompt (format research-prompt-fmt limit query)
-     :tools [tools/display
-             web-search
-             web-fetch]
-     :done? (! (max-turns turns)
-               (tool-called? tools/display)
-               (calls-exceed? web-search limit)
-               (calls-exceed? web-fetch limit))}))
+(defn research [{query :query turns :max-turns limit :search-limit}]
+  {:prompt (format research-prompt-fmt limit query)
+   :tools [tools/display
+           tools/web-search
+           tools/web-fetch]
+   :done? (! (max-turns turns)
+             (tool-called? tools/display)
+             (calls-exceed? tools/web-search limit)
+             (calls-exceed? tools/web-fetch limit))})
 
 (defn remember-prompt [tags]
   (format "Your task is to search through memory files to identify information about the content requested by the user.

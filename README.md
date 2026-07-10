@@ -12,16 +12,14 @@ The whole point of this project is to learn and have fun trying things. Not a si
 
 mana can read whole files, ask you questions and search the web.  It supports a basic loop that wants the model to produce JSON describing tool calls on every iteration, which the harness then calls before invoking the model again with the result.
 
+### Supporting Services
+
+In order to perform web searches, mana uses [searxng](https://docs.searxng.org/index.html) running in Docker (podman).
+Follow their instructions to get it running and enable the JSON format.
+
 ## How to Run mana
 
 I'm running Qwen from LMStudio and interacting with it using the OpenAI-style API served by the LMS server.  If you want to use a different model, just set it in `core.clj`.
-
-In order to use the web search and web fetching tools, you'll need an [Ollama API key,](https://ollama.com/settings/keys)
-which you can get for free by creating an account.
-
-```
-export OLLAMA_API_KEY=<your key>
-```
 
 You'll need Clojure and Leiningen to run the project.  After cloning this repository, you can run mana with a starting prompt by running
 

@@ -80,13 +80,13 @@
   "Perform inference with a configured model via a server using the OpenAI-style chat/completions API format."
   (let [body (json/generate-string
               {:model model
-               :messages messages
+               :messages (filter some? messages)
                :tools (map tool-call-spec tools)}
               {:pretty true})
         req {:accept :json
              :content-type :json
-             :socket-timeout 300000
-             :connection-timeout 300000
+             :socket-timeout 600000
+             :connection-timeout 600000
              :body body}
         res (http/post url req)
         data (json/parse-string (:body res))]
