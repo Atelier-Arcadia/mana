@@ -29,24 +29,29 @@ Guidelines:
 (def conversational-system-message
   (chats/user-message "Respond to the user's message: "))
 
-(defn- agent-loop [messages generation stop?]
-  (if (stop? messages)
-    (do (println "terminating. reason: " (stop? messages))
-        messages)
-    (recur (into messages (generation messages)) generation stop?)))
+(defn- agent-loop [history generation stop?]
+  (if (stop? history)
+    (do (println "terminating. reason: " (stop? history))
+        history)
+    (recur (into history (generation history)) generation stop?)))
 
 (defn- find-tool [available-tools name]
   (some #(when (= (:name %) name) %) available-tools))
 
-(defn- call-tool [available-tools {name :name args :arguments}]
+(defn- call-tool [history available-tools {name :name args :arguments}]
   (if-let [tool (find-tool available-tools name)]
-    (json/generate-string ((:implementation tool) args))))
+    (if (nil? (:guard tool))
+      (json/generate-string ((:implementation tool) args))
+      (let [guard ((:guard tool) args history)]
+        (cond (nil? guard) (json/generate-string ((:implementation tool) args))
+              (contains? :steer guard) (:steer guard)
+              :else "Tool call rejected by guardrail.")))))
 
-(defn- call-tools [cfg task messages]
+(defn- call-tools [cfg task history]
   (let [tools (:tools task)
-        response (infer/complete cfg tools messages)
+        response (infer/complete cfg tools history)
         tool-calls (:tool-calls response)
-        results (map (partial call-tool tools) tool-calls)]
+        results (map (partial call-tool history tools) tool-calls)]
     (interleave (map chats/tool-call-message tool-calls)
                 (map chats/tool-result-message results))))
 

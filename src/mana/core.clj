@@ -75,4 +75,4 @@
     (reset! ctx [mana/personality response])))
 
 (defn -main [& args]
-  (println (act search {:query "What are the most popular ways to handle concurrent processes in Clojure?"})))
+  (println (act search {:query "What is rich hickey up to in 2026?"})))
