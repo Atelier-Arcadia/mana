@@ -31,11 +31,11 @@
 (defn- action [task base-args]
   (fn [args] (task (merge base-args args))))
 
-(defn- first-display-message [history]
-  (let [display? #(and (chats/is_a? :tool-call-message %)
-                       (= (chats/tool-being-called %) "display"))]
+(defn- first-respond-message [history]
+  (let [respond? #(and (chats/is_a? :tool-call-message %)
+                       (= (chats/tool-being-called %) "respond"))]
     (->> history
-         (filter display?)
+         (filter respond?)
          (first))))
 
 (defn- first-assistant-message [history]
@@ -51,13 +51,13 @@
 (def summarize (action tasks/condense {:max-turns 2}))
 
 
-; Perform a task. Expects display to be called to output the result.
+; Perform a task. Expects respond to be called to output the result.
 (defn act [action args]
   (let [task (action args)
         history (agent/tool-calling chosen-model @ctx task)
         compacted (agent/tool-calling chosen-model [] (summarize {:contents history}))
-        response (first-display-message history)]
-    (swap! ctx conj (first-display-message compacted))
+        response (first-respond-message history)]
+    (swap! ctx conj (first-respond-message compacted))
     (displayed-message response)))
 
 ; Exchange a single message and produce the response.
@@ -71,7 +71,7 @@
 
 (defn compact []
   (let [history (agent/tool-calling chosen-model [] (summarize {:contents @ctx}))
-        response (first-display-message history)]
+        response (first-respond-message history)]
     (reset! ctx [mana/personality response])))
 
 (defn -main [& args]

@@ -31,24 +31,24 @@
     (->> conditions (map #(% history)) (reduce either?))))
 
 
-(def research-prompt-fmt "Your task is to perform research to gather information to display to the user.
+(def research-prompt-fmt "Your task is to perform research to gather information to respond to the user.
 
 You must synthesize search terms to query so that you find a diverse but relevant array of results.
 
 Your workflow:
 1. At most %d searches.
 2. Synthesize your findings.
-3. Write your response with the display tool.
+3. Write your response with the respond tool.
 
 Answer the user's query: %s")
 
 (defn research [{query :query turns :max-turns limit :search-limit}]
   {:prompt (format research-prompt-fmt limit query)
-   :tools [tools/display
+   :tools [tools/respond
            tools/web-search
            tools/web-fetch]
    :done? (! (max-turns turns)
-             (tool-called? tools/display)
+             (tool-called? tools/respond)
              (calls-exceed? tools/web-search limit)
              (calls-exceed? tools/web-fetch limit))})
 
@@ -60,7 +60,7 @@ Workflow:
 2. Identify related tags to search for.
 3. Search for those additional tags.
 4. Summarize your findings.
-5. Call the display tool to report the summary.
+5. Call the respond tool to report the summary.
 
 You are given the following tags:
 %s" (->> tags
@@ -70,9 +70,9 @@ You are given the following tags:
 ;; I tend to think about these things in terms of their done-conditions first.
 (defn remember [{ turns :max-turns tags :tags }]
   {:done? (! (max-turns turns)
-             (tool-called? tools/display))
+             (tool-called? tools/respond))
    :tools [tools/lookup-memory
-           tools/display]
+           tools/respond]
    :prompt (remember-prompt tags)})
 
 (defn condense-prompt [contents]
@@ -82,7 +82,7 @@ Workflow:
 1. Analyze the information presented to you.
 2. Identify any commonalities or patterns.
 3. Identify any issues or open questions.
-4. Display a summary.
+4. Respond with a summary.
 
 Guidelines:
 - Summaries should not exceed three or at most four paragraphs.
@@ -97,6 +97,6 @@ Contents provided by the user:
 
 (defn condense [{ contents :contents turns :max-turns }]
   {:done? (! (max-turns turns)
-             (tool-called? tools/display))
-   :tools [tools/display]
+             (tool-called? tools/respond))
+   :tools [tools/respond]
    :prompt (condense-prompt contents)})

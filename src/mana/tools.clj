@@ -7,17 +7,15 @@
 
 (alias 'str 'clojure.string)
 
-(defn- do-display
-  [{message "message"}]
-  (println "\n--- AGENT MESSAGE ----------\n" message "\n----------------------------\n")
+(defn- do-respond[{_message "message"}]
   "Your message was successfully displayed to the user.")
 
-(def display
-  {:name "display"
+(def respond
+  {:name "respond"
    :description "Print a message for the user to see. This is the only way to convey a response to the user.
 The array of arguments will be merged into a single string to display to the user."
    :schema (schema [:message "string" "The message to display"])
-   :implementation do-display})
+   :implementation do-respond})
 
 ; TODO - Need to be able to read and write at offsets.
 (def read-file
@@ -124,4 +122,4 @@ links (array): array of links found on the page"
    :schema (schema [:tag "string" "One specific tag to search for."])
    :implementation (fn [{tag :tag}] {:status "error"
                                      :message "Not implemented."
-                                     :action-required "Display this to the user and terminate."})})
+                                     :action-required "Respond to the user with this information."})})
