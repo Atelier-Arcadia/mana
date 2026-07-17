@@ -9,6 +9,7 @@
 (def assistant-message #(message "assistant" %))
 (def system-message #(message "system" %))
 (def tool-result-message #(message "tool" %))
+(def developer-message #(message "developer" %))
 (defn tool-call-message [{name :name args :arguments}]
   {:role "assistant"
    ; Just to be REALLY explicit about it :)
@@ -24,6 +25,7 @@
   (cond (= sym :user-message) (has-role? msg "user")
         (= sym :assistant-message) (has-role? msg "assistant")
         (= sym :system-message) (has-role? msg "system")
+        (= sym :developer-message) (has-role? msg "developer")
         (= sym :tool-result-message) (has-role? msg "tool")
         (and (= sym :tool-call-message)
              (has-role? msg "assistant")) (contains? msg :function_call)

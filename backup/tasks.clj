@@ -11,44 +11,56 @@
 
 (defn max-turns [x]
   #(and (>= (count %) x)
-        (format "Exceeded max turns: %d" x)))
+        {:stop (format "Exceeded max turns: %d" x)}))
 
 (defn tool-called? [tool]
   #(and (some (tool-call? tool) %)
-        (format "Called tool %s" (:name tool))))
+        {:stop (format "Called tool %s" (:name tool))}))
 
 (defn calls-exceed? [tool limit]
   #(and (->> %
              (filter (tool-call? tool))
              (count)
              (<= limit))
-        (format "Exceeded max calls to %s: %d" (:name tool) limit)))
+        {:stop (format "Exceeded max calls to %s: %d" (:name tool) limit)}))
+
+(defn- responded-after-sufficient-research? [min-searches]
+  (fn [history]
+    (let [did-min-research (and ((calls-exceed? tools/web-search min-searches) history)
+                                ((calls-exceed? tools/web-fetch min-searches) history))
+          called-respond ((tool-called? tools/respond) history)]
+      (cond (and did-min-research called-respond) {:stop "Research complete."}
+            (did-min-research))
+
+      {:steer "Perform more fetch tool calls for more information."})))
 
 ; STOP!
 (defn ! [& conditions]
-  "Check if any stop-condition has been reached, returning the alert message when one is encountered."
+  "Check if any stop-condition has been reached, returning either the stop message or steering message provided."
   (fn [history]
     (->> conditions (map #(% history)) (reduce either?))))
 
 
-(def research-prompt-fmt "Your task is to perform research to gather information to respond to the user.
+(defn- research-prompt [query]
+  (format "Your task is to perform research to gather information to respond to the user.
 
 You must synthesize search terms to query so that you find a diverse but relevant array of results.
 
 Your workflow:
-1. At most %d searches.
-2. Synthesize your findings.
-3. Write your response with the respond tool.
+1. Perform multiple searches to identify useful sources of information.
+2. Perform web fetches to obtain details from the sources identified.
+3. Synthesize the findings into a coherent narrative.
+4. Respond to the user with the summary you produce.
 
-Answer the user's query: %s")
+Answer the user's query: %s" query))
 
-(defn research [{query :query turns :max-turns limit :search-limit}]
-  {:prompt (format research-prompt-fmt limit query)
+(defn research [{query :query turns :max-turns limit :search-limit min :minimum-searches}]
+  {:prompt (research-prompt query)
    :tools [tools/respond
            tools/web-search
            tools/web-fetch]
-   :done? (! (max-turns turns)
-             (tool-called? tools/respond)
+   :done? (! (responded-after-sufficient-research? min)
+             (max-turns turns)
              (calls-exceed? tools/web-search limit)
              (calls-exceed? tools/web-fetch limit))})
 

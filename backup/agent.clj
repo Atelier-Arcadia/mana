@@ -4,7 +4,7 @@
             [mana.chats :as chats]))
 
 (def tool-calling-system-message
-  (chats/system-message "You are an orchestrator of tool calls that utilizes the tools available to you to solve the tasks the user assigns you.
+  (chats/system-message (str "You are an orchestrator of tool calls that utilizes the tools available to you to solve the tasks the user assigns you.
 You run within an agent harness that will respond back to you with tool call results automatically.
 
 Workflow:
@@ -15,37 +15,43 @@ Workflow:
   * Compare the results of the existing tool calls against the goal you are attempting to accomplish.
   * Determine if there are any gaps that still need to be explored.
 3. Decide how to respond
-  * If the task is complete, request two tool calls: (1) to display the results to the user and (2) to request more input.
+  * If the task is complete, request the 'respond' tool call to display a message to the user.
   * If the task is not complete, request additional tool calls to help you complete the task.
 
-Guidelines:
-- Do your best to fulfil the user's request with the information you're provided.
-- Call tools only when there are unambiguous gaps in the information you need to fulfil the task.
-- Disregard minor errors such as mis-spellings or slight differences in wording.
-- Avoid calling tools again if the information you need is already present.
-- Treat the most recent user message as the task that you must fulfil.
-"))
+The current date is: " (.format (java.time.LocalDate/now) (java.time.format.DateTimeFormatter/ofPattern "yyyy-MM-dd"))
+"When the user references a time period, you should interpret it relative to the current date.
+
+Disregard minor errors such as mis-spellings or slight differences in wording.")))
 
 (def conversational-system-message
   (chats/user-message "Respond to the user's message: "))
 
 (defn- agent-loop [history generation stop?]
-  (if (stop? history)
-    (do (println "terminating. reason: " (stop? history))
-        history)
-    (recur (into history (generation history)) generation stop?)))
+  (loop [msgs history]
+    (let [check (stop? msgs)
+          {reason :stop} check
+          {guidance :steer} check
+          _ (println "Got  guidance" guidance)]
+      (cond guidance (do (println "Recurring with steering")
+                         (recur (into msgs (generation (conj msgs (chats/developer-message guidance))))))
+            reason (do (println "Stopping. Reason:" reason)
+                       history)
+            :else (do (println "Recurring next turn")
+                      (recur (into msgs (generation msgs))))))))
 
 (defn- find-tool [available-tools name]
   (some #(when (= (:name %) name) %) available-tools))
 
-(defn- call-tool [history available-tools {name :name args :arguments}]
-  (if-let [tool (find-tool available-tools name)]
-    (if (nil? (:guard tool))
-      (json/generate-string ((:implementation tool) args))
-      (let [guard ((:guard tool) args history)]
-        (cond (nil? guard) (json/generate-string ((:implementation tool) args))
-              (contains? :steer guard) (:steer guard)
-              :else "Tool call rejected by guardrail.")))))
+(defn- call-tool [history tools tool-call]
+  (let [tool-name (:name tool-call)
+        tool-args (:arguments tool-call)
+        tool (find-tool tools tool-name)
+        guard-fn (or (:guard tool) (fn [_t _h] nil))
+        guard-result (guard-fn tool history)
+        _ (println "Result of guardrail call: " guard-result)]
+    (cond (nil? guard-result) (json/generate-string ((:implementation tool) tool-args))
+          (contains? :steer guard-result) (:steer guard-result)
+          :else "Tool call rejected by guardrail.")))
 
 (defn- call-tools [cfg task history]
   (let [tools (:tools task)
