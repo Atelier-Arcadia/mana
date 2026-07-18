@@ -3,8 +3,8 @@
             [cheshire.core :as json]))
 
 ; The main, plain-jane inference method that goes straight to the responses API.
-(defn inference [api model tools msg-history]
-  (let [body (json/generate-string {:model model :input msg-history})
+(defn inference [api model msg-history]
+  (let [body (json/generate-string {:model model :input msg-history} {:pretty true})
         req {:content-type :json :body body}
         res (http/post api req)]
     (json/parse-string (:body res))))
@@ -29,8 +29,9 @@
 
 ; Message types for simplicity
 (defn message [role content]
-  {:role role :content content :type "message"})
+  {:role role :content content})
 
 (def system-message (partial message "system"))
 (def user-message (partial message "user"))
-(def assistant-message (partial message "assistant"))
+(defn assistant-message [content]
+  (assoc (message "assistant" content) :type "message"))
