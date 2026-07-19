@@ -99,15 +99,6 @@ Good:
                         :message "Received an unknown message type"
                         :cause msg}))
 
-(defn say [{to-model :send to-user :recv} ctx prompt]
-  (>!! to-model {:context ctx :message (chat/user-message prompt)})
-  (<!! to-user))
-
-; TODO - may want to recreate tasks in some form
-(defn act [{to-model :send to-user :recv} ctx tools prompt]
-  (>!! to-model {:context ctx :tools tools :message (chat/user-message prompt)})
-  (<!! to-user))
-
 (defn stop [{to-model :send _ :recv}]
   (>!! to-model {:stop true}))
 
