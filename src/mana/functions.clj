@@ -1,4 +1,5 @@
-(ns mana.functions)
+(ns mana.functions
+  (:require [clojure.java.io :as io]))
 
 (defn- do-read-file [{fn :file-name}]
   (slurp fn))
@@ -8,6 +9,18 @@
    :description "Read the entire contents of a file."
    :schema [{:name :file-name :type "string" :description "The path to the file to read, relative to the working directory."}]
    :execute do-read-file})
+
+
+(defn- do-list-directory [{dir :directory}]
+  (let [contents (.listFiles (io/file dir))]
+    {:files (filter #(.isFile %) contents)
+     :directories (filter #(.isDirectory %) contents)}))
+
+(def list-directory
+  {:name "list-directory"
+   :description "List the contents of a directory."
+   :schema [{:name :directory :type "string" :description "Path to the directory to list the contents of."}]
+   :execute do-list-directory})
 
 
 (defn- format-arg [{ n :name t :type d :description }]

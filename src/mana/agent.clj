@@ -2,9 +2,12 @@
   (:require [clojure.edn :as edn]
             [mana.functions :as tools]
             [mana.inference :as chat]
-            [mana.config :as config]))
+            [mana.config :as config]
+            [clojure.core.async
+             :as async
+             :refer [>!! <!! chan thread alts!!]]))
 
-(def converational-system-prompt
+(def conversational-system-prompt
   (chat/system-message
 "You are a personal assistant and friend to the user, Arcadia Rose, who you call Cady.
 
@@ -58,13 +61,62 @@ Good:
      :text (chat/text response)}))
 
 ; Types of interactions we have with the agent.
-(defn few-shot [ctx & msgs]
-  (prompt-model (flatten [converational-system-prompt ctx msgs])))
+(defn- one-shot [ctx msg]
+  (prompt-model (flatten [conversational-system-prompt ctx msg])))
 
-(defn one-shot [ctx msg]
-  (few-shot ctx msg))
-
-(defn tool-call [ctx available-tools msg]
+(defn- tool-call [ctx available-tools msg]
   (let [response (prompt-model (flatten [(tool-calling-system-prompt available-tools) ctx msg]))
         with-code (assoc response :code (edn/read-string (:text response)))]
     (dissoc with-code :text)))
+
+; Dispatchers handle talking to the model in an agent loop
+
+(defmacro handle [kind resps recv msg]
+  `(do (~kind ~resps ~msg)
+       (recur (<!! ~recv))))
+
+(defn- is-terminate? [msg]
+  (contains? msg :stop))
+
+(defn- is-converse? [msg]
+  (and (contains? msg :message)
+       (not (contains? msg :tools))))
+
+(defn- is-action? [msg]
+  (and (contains? msg :message)
+       (contains? msg :tools)))
+
+(defn- converse
+  [model-responses {ctx :context msg :message}]
+  (>!! model-responses (one-shot ctx msg)))
+
+(defn- action
+  [model-responses {ctx :context tools :tools msg :message}]
+  (>!! model-responses (tool-call ctx tools msg)))
+
+(defn- unknown [model-responses msg]
+  (>!! model-responses {:error :unknown-message-type
+                        :message "Received an unknown message type"
+                        :cause msg}))
+
+(defn say [{to-model :send to-user :recv} ctx prompt]
+  (>!! to-model {:context ctx :message (chat/user-message prompt)})
+  (<!! to-user))
+
+; TODO - may want to recreate tasks in some form
+(defn act [{to-model :send to-user :recv} ctx tools prompt]
+  (>!! to-model {:context ctx :tools tools :message (chat/user-message prompt)})
+  (<!! to-user))
+
+(defn stop [{to-model :send _ :recv}]
+  (>!! to-model {:stop true}))
+
+(defn agent []
+  (let [messages (chan)
+        responses (chan)]
+    (thread (loop [msg (<!! messages)]
+              (cond (is-terminate? msg) nil
+                    (is-converse? msg)  (handle converse responses messages msg)
+                    (is-action? msg)    (handle action   responses messages msg)
+                    :else               (handle unknown  responses messages msg))))
+    {:send messages :recv responses}))
