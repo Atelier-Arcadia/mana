@@ -1,7 +1,7 @@
 (ns mana.core
   (:gen-class)
-  (:require [mana.inference :as chat]
-            [mana.agent :refer [agent]]
+  (:require [mana.kernel :as kernel]
+            [mana.inference :as chat]
             [mana.functions :as tools]
             [cheshire.core :as json]
             [clojure.core.async :refer [>!! <!!]]))
@@ -10,29 +10,31 @@
 (def tool-request (atom nil))
 (def usage (atom {:input-tokens 0 :output-tokens 0}))
 
-(def mana (agent))
-(def allowed-tools [tools/read-file tools/list-directory])
+(def mana (kernel/repl))
+(def fs [tools/read-file tools/list-directory])
 
 
 (defn clear! []
   (reset! context []))
 
 (defn stop! []
-  (>!! (:send mana) {:stop true}))
+  (kernel/send mana {:stop true}))
 
 (defn say [prompt]
-  (>!! (:send mana) {:context @context :message (chat/user-message prompt)})
-  (let [{cost :usage text :text} (<!! (:recv mana))]
+  (swap! context conj (chat/user-message prompt))
+  (kernel/send mana @context)
+  (let [{cost :usage text :text} (kernel/receive mana)]
     (swap! usage #(merge-with + % cost))
-    (swap! context into [(chat/user-message prompt) (chat/assistant-message text)])
+    (swap! context conj (chat/assistant-message text))
     (println text)))
 
 (defn act [tools prompt]
-  (>!! (:send mana) {:context @context :tools tools :message (chat/user-message prompt)})
-  (let [{cost :usage code :code} (<!! (:recv mana))]
+  (swap! context conj (chat/user-message prompt))
+  (kernel/send mana tools @context)
+  (let [{cost :usage code :code} (kernel/receive mana)]
     (reset! tool-request {:code code :tools tools})
     (swap! usage #(merge-with + % cost))
-    (swap! context into [(chat/user-message prompt) (chat/assistant-message (str code))])
+    (swap! context conj (chat/assistant-message (str code)))
     (println (format "---\nTool call requested:\n%s\n" code))))
 
 (defn y []
