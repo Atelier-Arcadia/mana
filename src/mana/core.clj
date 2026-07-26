@@ -1,8 +1,8 @@
 (ns mana.core
   (:gen-class)
-  (:require [mana.kernel :as kernel]
-            [mana.inference :as chat]
-            [mana.functions :as tools]
+  (:require [mana.inference :as chat]
+            [mana.functions :as fx]
+            [mana.tasks :as tx]
             [cheshire.core :as json]
             [clojure.core.async :refer [>!! <!!]]))
 
@@ -10,28 +10,26 @@
 (def tool-request (atom nil))
 (def usage (atom {:input-tokens 0 :output-tokens 0}))
 
-(def mana (kernel/repl))
-(def fs [tools/read-file tools/list-directory])
+(def mana (chat/dispatcher))
 
+(def fs [fx/read-file fx/list-directory])
 
 (defn clear! []
   (reset! context []))
 
 (defn stop! []
-  (kernel/send mana {:stop true}))
+  (chat/stop mana))
 
 (defn say [prompt]
   (swap! context conj (chat/user-message prompt))
-  (kernel/send mana @context)
-  (let [{cost :usage text :text} (kernel/receive mana)]
+  (let [{cost :usage text :text} (chat/converse mana @context)]
     (swap! usage #(merge-with + % cost))
     (swap! context conj (chat/assistant-message text))
     (println text)))
 
 (defn act [tools prompt]
   (swap! context conj (chat/user-message prompt))
-  (kernel/send mana tools @context)
-  (let [{cost :usage code :code} (kernel/receive mana)]
+  (let [{cost :usage code :code} (chat/perform mana tools @context)]
     (reset! tool-request {:code code :tools tools})
     (swap! usage #(merge-with + % cost))
     (swap! context conj (chat/assistant-message (str code)))
@@ -39,7 +37,7 @@
 
 (defn y []
   (let [{tools :tools code :code} @tool-request
-        result (tools/dispatch tools code)]
+        result (fx/dispatch tools code)]
     (reset! tool-request nil)
     (swap! context conj (chat/user-message (json/generate-string result)))
     result))
@@ -58,3 +56,6 @@
          result# ~code]
      (swap! context conj (chat/user-message (format "The user shared code with you:\n\n%s\nResult: %s" fmt# result#)))
      result#))
+
+(def explore (tx/explore {:goal "Understand the task system and recommend ways to simplify its current implementation." :directory "./src/mana/" :max-reads 10}))
+(defn mk-task [] (tx/task mana explore))

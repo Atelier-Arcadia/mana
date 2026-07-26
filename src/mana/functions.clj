@@ -1,6 +1,14 @@
 (ns mana.functions
   (:require [clojure.java.io :as io]))
 
+
+(def report-finished
+  {:name "report-finished"
+   :description "Terminate agent loop with a final response to your assigned task."
+   :schema [{:name :message :type "string" :description "The final message to report to the user."}]
+   :execute identity})
+
+
 (defn- do-read-file [{fn :file-name}]
   (slurp fn))
 
@@ -11,10 +19,25 @@
    :execute do-read-file})
 
 
+(def hide-from-agent
+  [#".*~$"
+   #".*#.*\..*#$"
+   #".*/?\.env(\.local)?$"
+   #".*/?secrets/?$"
+   #".*/?secrets/.*$"])
+
+(defn- hide? [file-path]
+  (some #(re-matches % file-path) hide-from-agent))
+
+(defn- filter-hidden [ls]
+  (filter #(not (hide? %)) ls))
+
 (defn- do-list-directory [{dir :directory}]
-  (let [contents (.listFiles (io/file dir))]
-    {:files (filter #(.isFile %) contents)
-     :directories (filter #(.isDirectory %) contents)}))
+  (let [contents (.listFiles (io/file dir))
+        files (filter #(.isFile %) contents)
+        dirs (filter #(.isDirectory %) contents)]
+    {:files       (filter-hidden (map str files))
+     :directories (filter-hidden (map str dirs))}))
 
 (def list-directory
   {:name "list-directory"
@@ -24,14 +47,14 @@
 
 
 (defn- format-arg [{ n :name t :type d :description }]
-  (format "%s - %s - %s" n t d))
+  (format "    - %s - %s - %s" n t d))
 
 (defn format-tool [{ n :name d :description s :schema }]
-  (let [schema-fmt (clojure.string/join (map format-arg s) "\n    ")]
+  (let [schema-fmt (clojure.string/join "\n" (map format-arg s))]
     (format "- %s - %s\n  schema:\n%s" n d schema-fmt)))
 
 (defn format-tool-list [tools]
-  (map format-tool tools))
+  (clojure.string/join "\n" (map format-tool tools)))
 
 (defn dispatch [allowed-tools fn-call]
   (let [tool-name (name (first fn-call))
