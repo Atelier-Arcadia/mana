@@ -58,4 +58,10 @@
      result#))
 
 (def explore (tx/explore {:goal "Understand the task system and recommend ways to simplify its current implementation." :directory "./src/mana/" :max-reads 10}))
-(defn mk-task [] (tx/task mana explore))
+
+(def supervisor (tx/supervisor mana))
+
+(defn register []
+  (tx/register supervisor {:task explore
+                           :recover tx/retry-exactly
+                           :on-complete (fn [task outcome] (swap! context conj (chat/user-message (apply str "outcome of task\n" task "\n---\nis \n" outcome))))}))

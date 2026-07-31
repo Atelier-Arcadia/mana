@@ -2,8 +2,13 @@
   (:require [mana.inference :as chat]
             [mana.functions :as fx]
             [cheshire.core :as json]
-            [clojure.core.async :refer [thread]])
+            [clojure.core.async :as async :refer [>!! <!!]])
   (:import [java.nio.file Paths]))
+
+(def debug-log (atom []))
+
+(defn log [& parts]
+  (swap! debug-log conj (apply str parts)))
 
 (defn- request-summary [state]
   (chat/user-message (format "Please summarize our conversation.
@@ -25,9 +30,8 @@ Conclude with a report to satisfy the task you were given." (json/generate-strin
         total-usage (merge-with + (:usage response) usage)]
     (merge response {:usage total-usage})))
 
-; tool-calling agent loops
 (defn task [model-dispatch { id :id prompt :prompt tools :tools init :init update-fn :update }]
-  (thread
+  (async/thread
     (loop [state (init)
            context [prompt]
            usage {:input-tokens 0 :output-tokens 0}]
@@ -46,6 +50,43 @@ Conclude with a report to satisfy the task you were given." (json/generate-strin
                       (recur (:state next-step)
                              (conj new-ctx new-message)
                              new-usage)))))))
+
+(defn- monitor [dx {tsk :task :as process}]
+  (let [result-chan (task dx tsk)]
+    (log "Monitoring a new task")
+    (async/map (fn [result] (assoc process :result result))
+               [result-chan])))
+
+(defn- handle-termination [sup-mix dx {tsk :task result :result recover :recovery handler :on-complete}]
+  (log "Got termination for task " tsk)
+  (if (and (contains? result :kind)
+           (= (:kind result) :error))
+    (->> tsk
+         (recover (:cause result) result)
+         (monitor dx)
+         (async/admix sup-mix))
+    (handler tsk result)))
+
+(defn supervisor [model-dispatch]
+  (let [registrations (async/chan)
+        task-status (async/chan)
+        supervised (async/mix task-status)]
+    (async/thread
+      (loop [[value port] (async/alts!! [registrations task-status])]
+        (if (= port registrations)
+          (do (log "adding a new task to the supervisor")
+              (async/admix supervised (monitor model-dispatch value))
+              (recur (async/alts!! [registrations task-status])))
+          (do (log "Got a completion result")
+              (handle-termination supervised model-dispatch value)
+              (recur (async/alts!! [registrations task-status]))))))
+    registrations))
+
+(defn register [reg-chan {tsk :task recover :recovery handler :on-complete :as process}]
+  (>!! reg-chan process))
+
+(defn retry-exactly [_failure-cause _error-data original-task]
+  original-task)
 
 (defn guide [prompt]
   {:kind :guidance :prompt prompt})
