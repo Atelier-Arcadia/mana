@@ -1,8 +1,11 @@
 (ns mana.core
   (:gen-class)
-  (:require [mana.inference :as chat]
+  (:require [mana.prompts :as prompts]
+            [mana.inference :as chat]
             [mana.functions :as fx]
-            [mana.tasks :as tx]
+            [mana.tasks.library :as tasks]
+            [mana.tasks.supervisor.supervision :as spv]
+            [mana.tasks.supervisor.recovery :as recover]
             [cheshire.core :as json]
             [clojure.core.async :refer [>!! <!!]]))
 
@@ -11,6 +14,9 @@
 (def usage (atom {:input-tokens 0 :output-tokens 0}))
 
 (def mana (chat/dispatcher))
+(def supervisor (spv/supervisor mana))
+
+(spv/run-thread supervisor)
 
 (def fs [fx/read-file fx/list-directory])
 
@@ -19,6 +25,12 @@
 
 (defn stop! []
   (chat/stop mana))
+
+(defn summarize [task result]
+  (let [request (conj (:context result)
+                      (chat/user-message (prompts/task-summarization result)))
+        {text :text} (chat/converse mana request)] ; TODO - what to do with cost?
+    (swap! context conj (chat/user-message (prompts/task-summary task text)))))
 
 (defn say [prompt]
   (swap! context conj (chat/user-message prompt))
@@ -57,11 +69,8 @@
      (swap! context conj (chat/user-message (format "The user shared code with you:\n\n%s\nResult: %s" fmt# result#)))
      result#))
 
-(def explore (tx/explore {:goal "Understand the task system and recommend ways to simplify its current implementation." :directory "./src/mana/" :max-reads 10}))
-
-(def supervisor (tx/supervisor mana))
-
-(defn register []
-  (tx/register supervisor {:task explore
-                           :recover tx/retry-exactly
-                           :on-complete (fn [task outcome] (swap! context conj (chat/user-message (apply str "outcome of task\n" task "\n---\nis \n" outcome))))}))
+(defn spawn
+  ([task] (spawn task [] recover/bruteforce))
+  ([task context] (spawn task context recover/bruteforce))
+  ([task context recover]
+    (spv/monitor supervisor {:task task :context context :on-error recover :on-complete summarize})))

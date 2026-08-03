@@ -1,5 +1,6 @@
 (ns mana.prompts
-  (:require [mana.functions :as tools]))
+  (:require [mana.functions :as tools]
+            [cheshire.core :as json]))
 
 (def conversational
 "You are a personal assistant and friend to the user, Arcadia Rose, who you call Cady.
@@ -47,3 +48,34 @@ Bad:
 Good:
 (read-file {:file-name \"./example.clj\"})"
 (tools/format-tool-list available-tools)))
+
+(defn task-summarization [{state :state cause :cause}]
+  (format "Please summarize our conversation.
+Identify the following critical pieces of information:
+1. What was the original task you were asked to complete?
+2. What steps did you take?
+3. What issues or errors did you encounter?
+4. How did you course-correct when you encountered problems?
+
+The final state of the task was:
+```json
+%s
+```
+
+The task ended in %s
+
+Conclude with a report to satisfy the task you were given."
+          (json/generate-string state)
+          (if cause
+            (format "an error state. The cause was labeled: %s" cause)
+            "a completed state.")))
+
+(defn task-summary [task summary]
+  (format "A %s task was spawned with the following prompt:
+<prompt>
+%s
+</prompt>
+
+Here is a summary of the outcome:
+
+%s" (:id task) (:prompt task) summary))
