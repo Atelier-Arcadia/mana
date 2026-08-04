@@ -70,8 +70,8 @@
         tags  (retrieve-tagged-memories tags)
         :else (list-all-memories)))
 
-(def remember
-  {:name "remember"
+(def recall
+  {:name "recall"
    :description "Retrieve memories containing useful context from past activity."
    :schema [{:name :id :optional :true :type "string" :description "When an id is provided, only the memory with that id will be retrieved. Tags are ignored when id is provided."}
             {:name :tags :optional true :type "list of clojure keywords" :description "When no tags are provided, list all memories. Then, when tags are provided, retrieve memories containing those tags."}]
