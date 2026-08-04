@@ -65,7 +65,7 @@
         index-fn    (comp #(select-keys % [:id :brief]) edn/read-string slurp)]
     (reduce conj [] (map index-fn fs))))
 
-(defn- do-remember [{id :id tags :tags}]
+(defn- do-recall[{id :id tags :tags}]
   (cond id    (retrieve-single-memory id)
         tags  (retrieve-tagged-memories tags)
         :else (list-all-memories)))
@@ -75,7 +75,7 @@
    :description "Retrieve memories containing useful context from past activity."
    :schema [{:name :id :optional :true :type "string" :description "When an id is provided, only the memory with that id will be retrieved. Tags are ignored when id is provided."}
             {:name :tags :optional true :type "list of clojure keywords" :description "When no tags are provided, list all memories. Then, when tags are provided, retrieve memories containing those tags."}]
-   :execute do-remember})
+   :execute do-recall})
 
 
 (defn- format-arg [{ n :name t :type d :description }]
