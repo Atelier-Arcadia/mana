@@ -1,5 +1,6 @@
 (ns mana.functions
-  (:require [clojure.java.io :as io]))
+  (:require [clojure.edn :as edn]
+            [clojure.java.io :as io]))
 
 
 (def report-finished
@@ -44,6 +45,37 @@
    :description "List the contents of a directory."
    :schema [{:name :directory :type "string" :description "Path to the directory to list the contents of."}]
    :execute do-list-directory})
+
+(defn- retrieve-single-memory [id]
+  (let [error-message (format "No memory with ID \"%s\" found." id)]
+    (if (re-matches #"[\w-]*\w+" id)
+      (try (edn/read-string (slurp (format "memories/%s.edn" id)))
+           (catch Exception e error-message))
+      error-message)))
+
+(defn- retrieve-tagged-memories [tags]
+  (let [tag-set     (set tags)
+        {fs :files} (do-list-directory {:directory "memories/"})
+        memories    (map (comp edn/read-string slurp) fs)
+        matcher     #(< 0 (count (clojure.set/intersection tag-set (:tags %))))]
+    (filter matcher memories)))
+
+(defn- list-all-memories []
+  (let [{fs :files} (do-list-directory {:directory "memories/"})
+        index-fn    (comp #(select-keys % [:id :brief]) edn/read-string slurp)]
+    (reduce conj [] (map index-fn fs))))
+
+(defn- do-remember [{id :id tags :tags}]
+  (cond id    (retrieve-single-memory id)
+        tags  (retrieve-tagged-memories tags)
+        :else (list-all-memories)))
+
+(def remember
+  {:name "remember"
+   :description "Retrieve memories containing useful context from past activity."
+   :schema [{:name :id :optional :true :type "string" :description "When an id is provided, only the memory with that id will be retrieved. Tags are ignored when id is provided."}
+            {:name :tags :optional true :type "list of clojure keywords" :description "When no tags are provided, list all memories. Then, when tags are provided, retrieve memories containing those tags."}]
+   :execute do-remember})
 
 
 (defn- format-arg [{ n :name t :type d :description }]

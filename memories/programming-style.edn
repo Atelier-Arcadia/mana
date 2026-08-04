@@ -1,0 +1,6 @@
+{:id "programming-style"
+ :brief "Data-driven, lightweight functions are preferred."
+ :tags #{:programming :code :preference}
+ :created "2026-08-04T01:40:30.785Z"
+ :updated "2026-08-04T01:40:30.785Z"
+ :content "Any code that appears imperative in structure, functions that have multiple responsibilities should ideally be simplified and refactored."}
