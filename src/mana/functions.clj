@@ -65,7 +65,7 @@
         index-fn    (comp #(select-keys % [:id :brief]) edn/read-string slurp)]
     (reduce conj [] (map index-fn fs))))
 
-(defn- do-recall[{id :id tags :tags}]
+(defn- do-recall [{id :id tags :tags}]
   (cond id    (retrieve-single-memory id)
         tags  (retrieve-tagged-memories tags)
         :else (list-all-memories)))
@@ -76,6 +76,34 @@
    :schema [{:name :id :optional :true :type "string" :description "When an id is provided, only the memory with that id will be retrieved. Tags are ignored when id is provided."}
             {:name :tags :optional true :type "list of clojure keywords" :description "When no tags are provided, list all memories. Then, when tags are provided, retrieve memories containing those tags."}]
    :execute do-recall})
+
+(defn- overwrite-memory [{id :id :as memory}]
+  (let [current (retrieve-single-memory id)
+        updated (assoc (merge current memory) :updated (now))]
+    (spit (format "memories/%s.edn" id) (str updated))))
+
+(defn- create-new-memory [{id :id :as memory}]
+  (let [right-now (now)]
+    (spit (format "memories/%s.edn" id)
+          (str (merge memory {:updated right-now :created right-now})))))
+
+(defn- do-remember [{id :id brief :brief tags :tags content :content :as memory}]
+  (let [exists?      (contains? (map #(:id %) (list-all-memories)) id)
+        id-valid?    (re-matches #"[\w-]*\w+" id)
+        brief-short? (< (count brief) 100)]
+    (cond (not id-valid?)    "Invalid memory ID."
+          (not brief-short?) "Memory brief is too long. Must be 100 characters or less."
+          exists?            (overwrite-memory memory)
+          :else              (create-new-memory memory))))
+
+(def remember
+  {:name "remember"
+   :description "Record a memory containing useful context to preserve for future work. Supplying an ID for an existing memory overwrites it."
+   :schema [{:name :id :type "string" :description "A unique identifier."}
+            {:name :brief :type "string" :description "A short version of the contents of the memory that indicates what it is relevant to."}
+            {:name :tags :type "set of keywords" :description "Keywords that relate memories to each other."}
+            {:name :content :type "string" :description "The full contents of the memory."}]
+   :execute do-remember})
 
 
 (defn- format-arg [{ n :name t :type d :description }]
